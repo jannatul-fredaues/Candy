@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candy – Voice Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;600;800&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg:        #0D0A1E;
+    --pink:      #FF3CAC;
+    --cyan:      #00F5FF;
+    --gold:      #FFD700;
+    --violet:    #7B2FFF;
+    --mist:      #F0EEFF;
+    --pink-glow: rgba(255,60,172,0.35);
+    --cyan-glow: rgba(0,245,255,0.25);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    color: var(--mist);
+  }
+
+  /* ── CANVAS (particles + wave) ── */
+  #bg-canvas {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── SCENE (3D perspective container) ── */
+  .scene {
+    position: relative; z-index: 1;
+    width: 100%; height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    perspective: 900px;
+  }
+
+  /* ── ORB WRAPPER (rotates on hover) ── */
+  .orb-wrapper {
+    position: relative;
+    width: 220px; height: 220px;
+    transform-style: preserve-3d;
+    transition: transform 0.1s ease-out;
+  }
+
+  /* ── OUTER RINGS ── */
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation: ringPulse 3s ease-in-out infinite;
+  }
+  .ring-1 { width: 260px; height: 260px; border-color: rgba(255,60,172,0.4);  animation-delay: 0s; }
+  .ring-2 { width: 310px; height: 310px; border-color: rgba(0,245,255,0.25);  animation-delay: 0.6s; }
+  .ring-3 { width: 370px; height: 370px; border-color: rgba(123,47,255,0.18); animation-delay: 1.2s; }
+  @keyframes ringPulse {
+    0%,100% { opacity: 0.6; transform: translate(-50%,-50%) scale(1); }
+    50%      { opacity: 1;   transform: translate(-50%,-50%) scale(1.04); }
+  }
+
+  /* ── MAIN ORB ── */
+  .orb {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 36%,
+      #ffffff44 0%, #a855f733 18%,
+      #7B2FFF 40%, #FF3CAC 65%, #00F5FF 100%);
+    box-shadow:
+      0 0 60px 20px var(--pink-glow),
+      0 0 120px 40px var(--cyan-glow),
+      inset 0 0 40px 10px rgba(255,255,255,0.08);
+    animation: orbBreath 4s ease-in-out infinite;
+  }
+  @keyframes orbBreath {
+    0%,100% { transform: scale(1);    box-shadow: 0 0 60px 20px var(--pink-glow), 0 0 120px 40px var(--cyan-glow), inset 0 0 40px 10px rgba(255,255,255,0.08); }
+    50%      { transform: scale(1.06); box-shadow: 0 0 80px 30px var(--pink-glow), 0 0 160px 60px var(--cyan-glow), inset 0 0 60px 18px rgba(255,255,255,0.12); }
+  }
+
+  /* specular highlight */
+  .orb::before {
+    content: '';
+    position: absolute;
+    width: 38%; height: 28%;
+    top: 16%; left: 20%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.7) 0%, transparent 80%);
+    border-radius: 50%;
+    transform: rotate(-30deg);
+  }
+
+  /* ── WAVE BARS (voice indicator inside orb) ── */
+  .wave-bars {
+    position: absolute;
+    bottom: 34%; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 5px;
+    z-index: 2;
+  }
+  .bar {
+    width: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.9);
+    animation: barDance 1.2s ease-in-out infinite;
+  }
+  .bar:nth-child(1){height:10px;animation-delay:0s}
+  .bar:nth-child(2){height:18px;animation-delay:0.15s}
+  .bar:nth-child(3){height:26px;animation-delay:0.3s}
+  .bar:nth-child(4){height:32px;animation-delay:0.45s}
+  .bar:nth-child(5){height:24px;animation-delay:0.6s}
+  .bar:nth-child(6){height:16px;animation-delay:0.75s}
+  .bar:nth-child(7){height:10px;animation-delay:0.9s}
+  @keyframes barDance {
+    0%,100% { transform: scaleY(1); opacity: 0.7; }
+    50%      { transform: scaleY(2.2); opacity: 1; }
+  }
+
+  /* ── MIC ICON ── */
+  .mic-icon {
+    position: absolute;
+    top: 22%; left: 50%;
+    transform: translateX(-50%);
+    font-size: 28px;
+    filter: drop-shadow(0 0 8px rgba(255,255,255,0.9));
+    animation: micFloat 2s ease-in-out infinite;
+    z-index: 2;
+  }
+  @keyframes micFloat {
+    0%,100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(-4px); }
+  }
+
+  /* ── ORBIT DOTS ── */
+  .orbit-track {
+    position: absolute;
+    width: 320px; height: 320px;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotateX(72deg);
+    border-radius: 50%;
+    border: 1px dashed rgba(255,60,172,0.2);
+    animation: orbitSpin 6s linear infinite;
+  }
+  .orbit-dot {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    top: -6px; left: calc(50% - 6px);
+    transform: rotateX(-72deg);
+  }
+  .orbit-dot.pink { background: var(--pink); box-shadow: 0 0 12px 4px var(--pink); }
+  @keyframes orbitSpin { to { transform: translate(-50%,-50%) rotateX(72deg) rotateZ(360deg); } }
+
+  .orbit-track-2 {
+    position: absolute;
+    width: 380px; height: 380px;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotateX(55deg) rotateZ(120deg);
+    border-radius: 50%;
+    border: 1px dashed rgba(0,245,255,0.2);
+    animation: orbitSpin2 9s linear infinite;
+  }
+  .orbit-dot-2 {
+    position: absolute;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    top: -4.5px; left: calc(50% - 4.5px);
+    transform: rotateX(-55deg) rotateZ(-120deg);
+    background: var(--cyan); box-shadow: 0 0 10px 3px var(--cyan);
+  }
+  @keyframes orbitSpin2 { to { transform: translate(-50%,-50%) rotateX(55deg) rotateZ(480deg); } }
+
+  /* ── TYPOGRAPHY ── */
+  .brand {
+    margin-top: 56px;
+    text-align: center;
+    user-select: none;
+  }
+  .brand-name {
+    font-family: 'Exo 2', sans-serif;
+    font-size: clamp(3rem, 8vw, 5.5rem);
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, var(--pink) 0%, var(--mist) 45%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 24px rgba(255,60,172,0.5));
+    animation: nameReveal 1.2s cubic-bezier(.16,1,.3,1) both;
+    animation-delay: 0.3s;
+  }
+  @keyframes nameReveal {
+    from { opacity: 0; transform: translateY(24px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .brand-tagline {
+    margin-top: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(0.75rem, 2vw, 0.95rem);
+    font-weight: 300;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(240,238,255,0.5);
+    animation: nameReveal 1.2s cubic-bezier(.16,1,.3,1) both;
+    animation-delay: 0.55s;
+  }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    margin-top: 48px;
+    width: min(340px, 80vw);
+    animation: nameReveal 0.8s ease both;
+    animation-delay: 0.8s;
+  }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 0.72rem; letter-spacing: 0.1em;
+    color: rgba(240,238,255,0.35);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .progress-track {
+    width: 100%; height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--violet), var(--pink), var(--cyan));
+    box-shadow: 0 0 12px 2px var(--pink-glow);
+    transition: width 0.18s ease;
+  }
+
+  /* ── STATUS TEXT ── */
+  .status {
+    margin-top: 16px;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    color: rgba(240,238,255,0.4);
+    text-transform: uppercase;
+    min-height: 1em;
+    animation: statusFade 0.35s ease;
+  }
+  @keyframes statusFade {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── FINAL EXIT ── */
+  .scene.exit {
+    animation: exitWipe 0.7s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  @keyframes exitWipe {
+    0%   { opacity: 1; transform: scale(1); }
+    60%  { opacity: 1; transform: scale(1.06); }
+    100% { opacity: 0; transform: scale(1.14); }
+  }
+
+  /* ── CORNER DECORATIONS ── */
+  .corner {
+    position: fixed;
+    width: 80px; height: 80px;
+    opacity: 0.18;
+  }
+  .corner.tl { top: 24px; left: 24px; border-top: 1.5px solid var(--cyan); border-left: 1.5px solid var(--cyan); }
+  .corner.br { bottom: 24px; right: 24px; border-bottom: 1.5px solid var(--pink); border-right: 1.5px solid var(--pink); }
+
+  /* ── FINAL TOUCH LINE ── */
+  .fyl {
+    position: fixed;
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    color: rgba(240,238,255,0.2);
+    text-transform: uppercase;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- corner brackets -->
+<div class="corner tl"></div>
+<div class="corner br"></div>
+
+<div class="scene" id="scene">
+
+  <div class="orb-wrapper" id="orbWrapper">
+    <!-- orbit tracks -->
+    <div class="orbit-track" style="transform-style:preserve-3d">
+      <div class="orbit-dot pink"></div>
+    </div>
+    <div class="orbit-track-2" style="transform-style:preserve-3d">
+      <div class="orbit-dot-2"></div>
+    </div>
+
+    <!-- rings -->
+    <div class="ring ring-1"></div>
+    <div class="ring ring-2"></div>
+    <div class="ring ring-3"></div>
+
+    <!-- orb -->
+    <div class="orb">
+      <div class="mic-icon">🎙</div>
+      <div class="wave-bars">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- brand -->
+  <div class="brand">
+    <div class="brand-name">Candy</div>
+    <div class="brand-tagline">Your intelligent voice companion</div>
+  </div>
+
+  <!-- progress -->
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span>Initialising</span>
+      <span id="pct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="fill"></div>
+    </div>
+    <div class="status" id="status">Waking up…</div>
+  </div>
+
+</div>
+
+<div class="fyl">Accuracy Chart &nbsp;·&nbsp; Voice AI</div>
+
+<script>
+/* ── PARTICLE CANVAS ── */
+const canvas = document.getElementById('bg-canvas');
+const ctx    = canvas.getContext('2d');
+
+function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+const particles = Array.from({length: 90}, () => ({
+  x: Math.random() * innerWidth,
+  y: Math.random() * innerHeight,
+  r: Math.random() * 1.8 + 0.3,
+  dx: (Math.random() - 0.5) * 0.4,
+  dy: (Math.random() - 0.5) * 0.4,
+  hue: Math.random() < 0.5 ? 300 : 185,  // pink or cyan
+  alpha: Math.random() * 0.5 + 0.1,
+}));
+
+function drawParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.alpha})`;
+    ctx.fill();
+    p.x += p.dx; p.y += p.dy;
+    if (p.x < 0 || p.x > canvas.width)  p.dx *= -1;
+    if (p.y < 0 || p.y > canvas.height) p.dy *= -1;
+  });
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+/* ── 3D TILT ON MOUSE MOVE ── */
+const wrapper = document.getElementById('orbWrapper');
+document.addEventListener('mousemove', e => {
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  const rx = ((e.clientY - cy) / cy) * -18;
+  const ry = ((e.clientX - cx) / cx) * 18;
+  wrapper.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
+});
+document.addEventListener('mouseleave', () => {
+  wrapper.style.transform = 'rotateX(0) rotateY(0)';
+});
+
+/* ── TOUCH TILT ── */
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  const rx = ((t.clientY - cy) / cy) * -14;
+  const ry = ((t.clientX - cx) / cx) * 14;
+  wrapper.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`;
+}, {passive: true});
+
+/* ── PROGRESS SIMULATION ── */
+const fill   = document.getElementById('fill');
+const pctEl  = document.getElementById('pct');
+const status = document.getElementById('status');
+const scene  = document.getElementById('scene');
+
+const steps = [
+  { target: 12,  label: 'Loading language model…' },
+  { target: 28,  label: 'Calibrating voice engine…' },
+  { target: 45,  label: 'Syncing neural pathways…' },
+  { target: 63,  label: 'Warming up responses…' },
+  { target: 79,  label: 'Personalising for you…' },
+  { target: 91,  label: 'Almost there…' },
+  { target: 100, label: 'Candy is ready ✦' },
+];
+
+let current = 0;
+let pct = 0;
+
+function nextStep() {
+  if (current >= steps.length) return;
+  const step = steps[current++];
+
+  // animate number
+  const startPct = pct;
+  const endPct   = step.target;
+  const duration = 700 + Math.random() * 600;
+  const start    = performance.now();
+
+  status.textContent = step.label;
+  status.style.animation = 'none';
+  void status.offsetWidth;
+  status.style.animation = 'statusFade 0.35s ease';
+
+  function tick(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    pct = startPct + (endPct - startPct) * ease;
+    fill.style.width = pct + '%';
+    pctEl.textContent = Math.round(pct) + '%';
+    if (t < 1) { requestAnimationFrame(tick); }
+    else {
+      pct = endPct;
+      if (current < steps.length) {
+        setTimeout(nextStep, 300 + Math.random() * 400);
+      } else {
+        setTimeout(() => {
+          scene.classList.add('exit');
+          scene.addEventListener('animationend', () => {
+            document.body.style.background = '#0D0A1E';
+            // → redirect to home page here
+             window.location.href = '/homepage.html';
+          }, { once: true });
+        }, 900);
+      }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+// small initial delay so user sees the screen
+setTimeout(nextStep, 800);
+</script>
+</body>
+</html>
